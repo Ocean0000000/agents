@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, SecretStr
 from typing import Literal
 from collections.abc import Callable
-from json import loads, JSONDecodeError
+from json import loads
 from langchain_openai import ChatOpenAI
 
 
@@ -37,6 +37,10 @@ class Finish(BaseModel):
     result: int
 
 
+class PromptFixResponse(BaseModel):
+    parseError: str
+
+
 SYSTEM_PROMPT = """
 You are a minimal agent. You must use the tools available from the following:
 
@@ -62,6 +66,8 @@ If the task is complete, use this schema:
 {
     "result": value
 }
+
+If you do not follow the schema exactly, I will tell you to fix your response.
 """
 
 
@@ -83,17 +89,21 @@ class Agent:
             {memory_text}
         """
 
-    def parse(self, response: str) -> ToolCall | Finish | None:
+    def parse(self, response: str) -> ToolCall | Finish:
         try:
             structured_output: dict = loads(response)
-            if structured_output.get("name") in self.tools:
+            if (
+                structured_output.get("name") in self.tools
+                and structured_output.get("a") is not None
+                and structured_output.get("b") is not None
+            ):
                 return ToolCall(**structured_output)
-            if structured_output.get("result") is not None:
+            elif structured_output.get("result") is not None:
                 return Finish(**structured_output)
-        except JSONDecodeError:
-            # i need to figure out how to tell the model this
-
-            pass
+            else:
+                raise ValueError("Invalid action format")
+        except Exception:
+            raise ValueError("Could not parse response")
 
     def execute(self, action: ToolCall) -> int:
         return self.tools[action.name](action.a, action.b)
