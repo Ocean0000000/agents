@@ -15,19 +15,54 @@ def add(a: int, b: int) -> int:
     return a + b
 
 
+def subtract(a: int, b: int) -> int:
+    print(f"Subtracting {b} from {a}")
+    return a - b
+
+
 def multiply(a: int, b: int) -> int:
     print(f"Multiplying {a} and {b}")
     return a * b
 
 
+def divide(a: int, b: int) -> int:
+    print(f"Dividing {a} by {b}")
+    if b == 0:
+        raise ValueError("Cannot divide by zero")
+    return a // b
+
+
 TOOLS = {
     "add": add,
+    "subtract": subtract,
     "multiply": multiply,
+    "divide": divide,
 }
 
 
+class SystemMessage(BaseModel):
+    role: Literal["system"]
+    content: str
+
+
+class UserMessage(BaseModel):
+    role: Literal["user"]
+    content: str
+
+
+class ToolMessage(BaseModel):
+    role: Literal["tool"]
+    name: str
+    content: str
+
+
+class AIMessage(BaseModel):
+    role: Literal["assistant"]
+    content: str
+
+
 class ToolCall(BaseModel):
-    name: Literal["add", "multiply"]
+    name: Literal["add", "subtract", "multiply", "divide"]
     a: int
     b: int
 
@@ -41,11 +76,15 @@ You are a minimal agent. You must use the tools available from the following:
 
 TOOLS = {
     "add": add,
+    "subtract": subtract,
     "multiply": multiply,
+    "divide": divide,
 }
 
 add(a: int, b: int) => int
+subtract(a: int, b: int) => int
 multiply(a: int, b: int) => int
+divide(a: int, b: int) => int
 
 I've made a JSON schema for you to give a structured output. You must follow this format exactly.
 In your responses, return a single JSON object with no extra text that must match the following schemas depending on your action:
@@ -70,19 +109,13 @@ class Agent:
     def __init__(self, llm: ChatOpenAI, tools: dict[str, Callable[[int, int], int]]):
         self.llm = llm
         self.tools = tools
-        self.memory = []
+        self.memory: list[
+            UserMessage | SystemMessage | ToolMessage | AIMessage | str
+        ] = []
 
-    def build_prompt(self, goal: str) -> str:
+    def build_prompt(self) -> str:
         memory_text = "\n".join(str(m) for m in self.memory)
-
-        return f"""
-            {SYSTEM_PROMPT}
-
-            Goal: {goal}
-
-            MEMORY:
-            {memory_text}
-        """
+        return memory_text
 
     def parse(self, response: str) -> ToolCall | Finish | None:
         adapter = TypeAdapter(ToolCall | Finish)
@@ -97,8 +130,12 @@ class Agent:
         return self.tools[action.name](action.a, action.b)
 
     def run(self, goal: str, max_steps: int = 5) -> int:
+        if not self.memory:
+            self.memory.append(SystemMessage(role="system", content=SYSTEM_PROMPT))
+        self.memory.append(UserMessage(role="user", content=goal))
+
         for step in range(max_steps):
-            prompt = self.build_prompt(goal)
+            prompt = self.build_prompt()
             response = self.llm.invoke(prompt)
             content = response.content
 
@@ -113,6 +150,8 @@ class Agent:
                         pieces.append(str(part))
                 content = "\n".join(pieces)
 
+            self.memory.append(AIMessage(role="assistant", content=content))
+
             try:
                 action = self.parse(content)
                 print("Prompt:", prompt)
@@ -122,7 +161,11 @@ class Agent:
                 if isinstance(action, ToolCall):
                     tool_result = self.execute(action)
                     self.memory.append(
-                        f"Executed {action.name} with result: {tool_result}"
+                        ToolMessage(
+                            role="tool",
+                            name=action.name,
+                            content=f"Executed {action.name} with result: {tool_result}",
+                        )
                     )
 
                 if isinstance(action, Finish):
@@ -130,6 +173,10 @@ class Agent:
             except ValidationError:
                 self.memory.append(f"Could not parse response: {content}")
                 print(f"Could not parse response: {content}")
+                continue
+            except ValueError as ve:
+                self.memory.append(f"Error during tool execution: {ve}")
+                print(f"Error during tool execution: {ve}")
                 continue
 
         raise RuntimeError("Agent did not finish in time")
