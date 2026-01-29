@@ -4,10 +4,9 @@
 
 import os
 from dotenv import load_dotenv
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, TypeAdapter, ValidationError, SecretStr
 from typing import Literal
 from collections.abc import Callable
-from json import loads
 from langchain_openai import ChatOpenAI
 
 
@@ -35,10 +34,6 @@ class ToolCall(BaseModel):
 
 class Finish(BaseModel):
     result: int
-
-
-class PromptFixResponse(BaseModel):
-    parseError: str
 
 
 SYSTEM_PROMPT = """
@@ -89,21 +84,14 @@ class Agent:
             {memory_text}
         """
 
-    def parse(self, response: str) -> ToolCall | Finish:
-        try:
-            structured_output: dict = loads(response)
-            if (
-                structured_output.get("name") in self.tools
-                and structured_output.get("a") is not None
-                and structured_output.get("b") is not None
-            ):
-                return ToolCall(**structured_output)
-            elif structured_output.get("result") is not None:
-                return Finish(**structured_output)
-            else:
-                raise ValueError("Invalid action format")
-        except Exception:
-            raise ValueError("Could not parse response")
+    def parse(self, response: str) -> ToolCall | Finish | None:
+        adapter = TypeAdapter(ToolCall | Finish)
+        structured_output = adapter.validate_json(response)
+        if isinstance(structured_output, ToolCall):
+            return structured_output
+        elif isinstance(structured_output, Finish):
+            return structured_output
+        return None
 
     def execute(self, action: ToolCall) -> int:
         return self.tools[action.name](action.a, action.b)
@@ -123,7 +111,7 @@ class Agent:
                         pieces.append(part["text"])
                     else:
                         pieces.append(str(part))
-                content = "/n".join(pieces)
+                content = "\n".join(pieces)
 
             try:
                 action = self.parse(content)
@@ -139,7 +127,7 @@ class Agent:
 
                 if isinstance(action, Finish):
                     return action.result
-            except ValueError:
+            except ValidationError:
                 self.memory.append(f"Could not parse response: {content}")
                 print(f"Could not parse response: {content}")
                 continue
