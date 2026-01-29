@@ -125,21 +125,24 @@ class Agent:
                         pieces.append(str(part))
                 content = "/n".join(pieces)
 
-            action = self.parse(content)
+            try:
+                action = self.parse(content)
+                print("Prompt:", prompt)
+                print(f"\nStep {step + 1}")
+                print("Action:", action)
 
-            print("Prompt:", prompt)
-            print(f"\nStep {step + 1}")
-            print("Action:", action)
+                if isinstance(action, ToolCall):
+                    tool_result = self.execute(action)
+                    self.memory.append(
+                        f"Executed {action.name} with result: {tool_result}"
+                    )
 
-            if isinstance(action, Finish):
-                return action.result
-
-            if not isinstance(action, ToolCall):
-                self.memory.append(f"Could not parse action from response: {content}")
+                if isinstance(action, Finish):
+                    return action.result
+            except ValueError:
+                self.memory.append(f"Could not parse response: {content}")
+                print(f"Could not parse response: {content}")
                 continue
-
-            result = self.execute(action)
-            self.memory.append(f"Result Found: {result}")
 
         raise RuntimeError("Agent did not finish in time")
 
