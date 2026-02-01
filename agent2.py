@@ -62,4 +62,5 @@ agent = create_agent(
     tools=[TOOLS["think"], TOOLS["add"], TOOLS["multiply"]],
 )
 result = agent.invoke({"messages": [HumanMessage("Add 2 and 3")]})
-print("Final Result:", result)
+if result["structured_response"]:
+    print(result["structured_response"])
