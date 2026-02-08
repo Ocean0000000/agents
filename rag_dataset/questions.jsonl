@@ -1,0 +1,10 @@
+{"id":"q1","question":"What is the recommended brew time for a double shot on the Atlas machine?","answer":"28 to 32 seconds","source":"atlas_manual.md"}
+{"id":"q2","question":"How often should the Atlas machine be descaled if using hard water?","answer":"Every 60 days","source":"atlas_manual.md"}
+{"id":"q3","question":"What rotor size is used on the front brake of the RidgeTrail 500?","answer":"180 mm","source":"ridge_bike_specs.md"}
+{"id":"q4","question":"What rider height range is recommended for the RidgeTrail 500?","answer":"165 to 190 cm","source":"ridge_bike_specs.md"}
+{"id":"q5","question":"What is the default limit for the Orion Notes list endpoint?","answer":"20","source":"orion_api_guide.md"}
+{"id":"q6","question":"What error code is returned when a note id does not exist?","answer":"404 Not Found","source":"orion_api_guide.md"}
+{"id":"q7","question":"How do you reset the Zephyr filter light?","answer":"Hold the Power button for 5 seconds while the unit is on","source":"zephyr_troubleshooting.md"}
+{"id":"q8","question":"How often should the Zephyr HEPA filter be replaced?","answer":"Every 6 months","source":"zephyr_troubleshooting.md"}
+{"id":"q9","question":"What is the Orion Notes API rate limit per minute?","answer":"60 requests per minute per token","source":"orion_api_guide.md"}
+{"id":"q10","question":"What torque should the RidgeTrail 500 stem bolts be tightened to?","answer":"5 Nm","source":"ridge_bike_specs.md"}
