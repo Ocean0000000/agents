@@ -14,10 +14,12 @@ from langchain_community.document_loaders import (
 )
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_chroma import Chroma
+from langchain_mcp_adapters.client import MultiServerMCPClient
+import asyncio
 
 load_dotenv()
-api_key = os.getenv("API_KEY")
-api_key = SecretStr(api_key) if api_key else None
+api_key_str = os.getenv("API_KEY")
+api_key = SecretStr(api_key_str) if api_key_str else None
 
 loader = DirectoryLoader(
     "./rag_dataset",
@@ -114,26 +116,45 @@ SYSTEM_PROMPT = """
 You are a minimal agent with tools. Always use the thought tool before you do anything else.
 """
 
-model = ChatOpenAI(model="gpt-4o-mini", api_key=api_key)
-agent = create_agent(
-    model=model,
-    response_format=AIResponse,
-    system_prompt=SYSTEM_PROMPT,
-    tools=[TOOLS["think"], TOOLS["add"], TOOLS["multiply"], TOOLS["retrieve"]],
-)
 
-result = agent.invoke({"messages": [HumanMessage("Add 2 and 3")]})
-if result["structured_response"]:
-    print(result["structured_response"])
+async def main():
+    client = MultiServerMCPClient(
+        {
+            "sis": {
+                "transport": "streamable_http",
+                "url": "http://localhost:8000/mcp",
+            }
+        }
+    )
 
-rag_result = agent.invoke(
-    {
-        "messages": [
-            HumanMessage(
-                "What is the recommended brew time for a double shot on the Atlas machine?"
-            )
-        ]
-    }
-)
-if rag_result["structured_response"]:
-    print(rag_result["structured_response"])
+    mcp_tools = await client.get_tools()
+    model = ChatOpenAI(model="gpt-4o-mini", api_key=api_key)
+    agent = create_agent(
+        model=model,
+        response_format=AIResponse,
+        system_prompt=SYSTEM_PROMPT,
+        tools=[TOOLS["think"], TOOLS["add"], TOOLS["multiply"], TOOLS["retrieve"], *mcp_tools],
+    )
+
+    result = await agent.ainvoke({"messages": [HumanMessage("Add 2 and 3")]})
+    if result["structured_response"]:
+        print(result["structured_response"])
+
+    rag_result = await agent.ainvoke(
+        {
+            "messages": [
+                HumanMessage(
+                    "What is the recommended brew time for a double shot on the Atlas machine?"
+                )
+            ]
+        }
+    )
+    if rag_result["structured_response"]:
+        print(rag_result["structured_response"])
+    
+    mcp_result = await agent.ainvoke({"messages": [HumanMessage("Add a student named Ocean Van"), HumanMessage("What is the GPA of Ocean Van?")]})
+    if mcp_result["structured_response"]:
+        print(mcp_result["structured_response"])
+
+if __name__ == "__main__":
+    asyncio.run(main())
