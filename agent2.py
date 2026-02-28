@@ -1,12 +1,16 @@
 # doing what i did in agent1.py but using langchain
 
 import os
+import json
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
 from dotenv import load_dotenv
 from pydantic import BaseModel, SecretStr
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     DirectoryLoader,
@@ -20,6 +24,7 @@ import asyncio
 load_dotenv()
 api_key_str = os.getenv("API_KEY")
 api_key = SecretStr(api_key_str) if api_key_str else None
+console = Console()
 
 loader = DirectoryLoader(
     "./rag_dataset",
@@ -117,6 +122,16 @@ You are a minimal agent with tools. Always use the thought tool before you do an
 """
 
 
+def decode_answer_text(answer: str) -> str:
+    stripped = answer.strip()
+    if len(stripped) >= 2 and stripped[0] == '"' and stripped[-1] == '"':
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return answer
+    return answer
+
+
 async def main():
     client = MultiServerMCPClient(
         {
@@ -133,28 +148,30 @@ async def main():
         model=model,
         response_format=AIResponse,
         system_prompt=SYSTEM_PROMPT,
-        tools=[TOOLS["think"], TOOLS["add"], TOOLS["multiply"], TOOLS["retrieve"], *mcp_tools],
+        tools=[
+            TOOLS["think"],
+            TOOLS["add"],
+            TOOLS["multiply"],
+            TOOLS["retrieve"],
+            *mcp_tools,
+        ],
     )
 
-    result = await agent.ainvoke({"messages": [HumanMessage("Add 2 and 3")]})
-    if result["structured_response"]:
-        print(result["structured_response"])
+    memory = []
 
-    rag_result = await agent.ainvoke(
-        {
-            "messages": [
-                HumanMessage(
-                    "What is the recommended brew time for a double shot on the Atlas machine?"
-                )
-            ]
-        }
-    )
-    if rag_result["structured_response"]:
-        print(rag_result["structured_response"])
-    
-    mcp_result = await agent.ainvoke({"messages": [HumanMessage("Add a student named Ocean Van"), HumanMessage("What is the GPA of Ocean Van?")]})
-    if mcp_result["structured_response"]:
-        print(mcp_result["structured_response"])
+    while True:
+        user_input = input("Enter a message (or 'quit' to exit): ")
+        if user_input.lower() == "quit":
+            break
+        else:
+            memory.append(HumanMessage(user_input))
+
+        result = await agent.ainvoke({"messages": memory})
+        if result["structured_response"]:
+            answer_text = decode_answer_text(result["structured_response"].answer)
+            console.print(Panel(Markdown(answer_text), title="Assistant"))
+            memory.append(AIMessage(content=answer_text))
+
 
 if __name__ == "__main__":
     asyncio.run(main())
